@@ -91,6 +91,15 @@
   .edit { display: grid; grid-template-columns: 1fr 70px 70px 28px; gap: 6px; margin-bottom: 6px; }
   .edit input { min-width: 0; }
   .edit button { padding: 0; color: var(--red); background: none; font-size: 18px; }
+  header .row { display: flex; gap: 10px; }
+  #histBtn { background: var(--card); }
+  #histList .empty { padding: 4px 0 8px; text-align: left; }
+  .hist-head { display: flex; justify-content: space-between; align-items: center; }
+  .hist-head .cat { margin-bottom: 4px; }
+  button.danger-text { color: var(--red); padding: 4px 10px; margin-top: 10px; font-size: 13px; }
+  .hist { padding: 10px 0; border-bottom: 1px solid var(--sep); }
+  .hist-top { display: flex; justify-content: space-between; margin-bottom: 2px; }
+  .hist-items { color: var(--muted); font-size: 14px; }
   .confirm { padding: 20px; text-align: center; }
   .confirm p { margin: 0 0 18px; }
   .confirm .row { display: flex; gap: 10px; justify-content: center; }
@@ -99,7 +108,8 @@
 <body>
 <header>
   <h1>Comenzi mese</h1>
-  <button id="menuBtn" class="primary">+ Meniu</button>
+  <div class="row"><button id="histBtn">Istoric mese</button>
+  <button id="menuBtn" class="primary">+ Meniu</button></div>
 </header>
 <main id="tables"></main>
 
@@ -117,6 +127,13 @@
   <div class="dlg">
     <div class="dlg-head"><h3>Produse din meniu</h3><button data-close>Gata</button></div>
     <div class="dlg-body" id="menuList"></div>
+  </div>
+</dialog>
+
+<dialog id="histDlg">
+  <div class="dlg">
+    <div class="dlg-head"><h3>Istoric mese</h3><button data-close>Gata</button></div>
+    <div class="dlg-body" id="histList"></div>
   </div>
 </dialog>
 
@@ -149,20 +166,31 @@ Hot Drinks|Irish Coffee|200ml|12
 Hot Drinks|Frappe|350ml|15
 Hot Drinks|Ice Latte|350ml|15
 Hot Drinks|Espresso Tonic|350ml|15
-Hot Drinks|Ciocolată caldă (neagră/albă)|260ml|12
-Hot Drinks|Ceai (diferite arome)|400ml|12
+Hot Drinks|Ciocolată caldă neagră|260ml|12
+Hot Drinks|Ciocolată caldă albă|260ml|12
+Hot Drinks|Ceai Cireșe|400ml|12
+Hot Drinks|Ceai Fructe de pădure|400ml|12
+Hot Drinks|Ceai Exotic|400ml|12
+Hot Drinks|Ceai Iasomie|400ml|12
+Hot Drinks|Ceai Mentă|400ml|12
+Hot Drinks|Ceai plic||7
 Extra|Deco Coffee||3
 Extra|Lapte vegetal||3
 Extra|Sirop||3
-Limonadă|Limonadă clasică / Grapefruit|350ml|14
+Limonadă|Limonadă clasică|350ml|14
+Limonadă|Limonadă grapefruit|350ml|14
 Croissants & Cookies|Croissant|70g|8
 Croissants & Cookies|Croissant cu ciocolată|95g|9
 Croissants & Cookies|Cookies|76g|10
-Răcoritoare|Pepsi / Twist / Zero|500ml|10
+Răcoritoare|Pepsi Normal|500ml|10
+Răcoritoare|Pepsi Twist|500ml|10
+Răcoritoare|Pepsi Zero|500ml|10
 Răcoritoare|Mountain Dew|500ml|10
 Răcoritoare|7 Up|500ml|10
 Răcoritoare|Mirinda Orange|500ml|10
-Răcoritoare|Prigat Portocale / Piersici / Căpșuni + Banane|500ml|10
+Răcoritoare|Prigat Portocale|500ml|10
+Răcoritoare|Prigat Piersici|500ml|10
+Răcoritoare|Prigat Căpșuni + Banane|500ml|10
 Răcoritoare|Lipton Lămâie / Piersici|500ml|10
 Răcoritoare|Aqua Carpatica Plată / Carbo / Carbo Forte|500ml|8
 Bere|Bere Draft|400ml|12
@@ -188,11 +216,13 @@ function load(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
 }
 function save() {
-  try { localStorage.setItem('menu', JSON.stringify(menu)); localStorage.setItem('orders', JSON.stringify(orders)); } catch {}
+  try { localStorage.setItem('menu_v2', JSON.stringify(menu)); localStorage.setItem('history', JSON.stringify(history)); localStorage.setItem('orders', JSON.stringify(orders)); } catch {}
 }
-let menu = load('menu', DEFAULT_MENU);
+let menu = load('menu_v2', DEFAULT_MENU);
 // orders[t] = [{name, price, n}] — a snapshot, so editing the menu never changes open tables
 let orders = load('orders', Array.from({ length: TABLES }, () => []));
+// history[t] = [{at, items, total}], newest first; filled when a table is cleared
+let history = load('history', Array.from({ length: TABLES }, () => []));
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -277,7 +307,15 @@ document.addEventListener('click', e => {
   else if (d.clear) {
     const t = +d.clear;
     if (!orders[t].length) return;
-    ask(`Sigur golești Masa ${t + 1}? Toate produsele vor fi șterse.`, 'Golește masa', () => { orders[t] = []; save(); renderTables(); });
+    ask(`Sigur golești Masa ${t + 1}? Toate produsele vor fi șterse.`, 'Golește masa', () => {
+      history[t].unshift({ at: Date.now(), items: orders[t], total: orders[t].reduce((s, i) => s + i.price * i.n, 0) });
+      orders[t] = []; save(); renderTables();
+    });
+  }
+  else if (b.id === 'histBtn') { renderHistory(); $('#histDlg').showModal(); }
+  else if (d.histClear) {
+    const t = +d.histClear;
+    ask(`Ștergi istoricul pentru Masa ${t + 1}?`, 'Șterge istoricul', () => { history[t] = []; save(); renderHistory(); });
   }
   else if (b.id === 'menuBtn') { renderMenu(); $('#menuDlg').showModal(); }
   else if (d.del) {
@@ -294,6 +332,16 @@ document.addEventListener('click', e => {
     save(); renderMenu();
   }
 });
+function renderHistory() {
+  const when = ms => new Date(ms).toLocaleString('ro-RO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  $('#histList').innerHTML = history.map((list, t) => `
+    <div class="hist-head"><div class="cat">Masa ${t + 1}</div>
+      ${list.length ? `<button data-hist-clear="${t}" class="danger-text">Șterge istoricul</button>` : ''}</div>
+    ${list.length ? list.map(h => `<div class="hist">
+      <div class="hist-top"><span>${when(h.at)}</span><b>${lei(h.total)}</b></div>
+      <div class="hist-items">${h.items.map(i => `${i.n} × ${esc(i.name)}`).join(', ')}</div>
+    </div>`).join('') : '<p class="empty">Niciun istoric</p>'}`).join('');
+}
 function ask(text, okLabel, onOk) {
   $('#confirmText').textContent = text;
   $('#confirmOk').textContent = okLabel;
