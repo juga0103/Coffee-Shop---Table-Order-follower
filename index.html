@@ -99,6 +99,8 @@
   .items li.sgr { color: var(--muted); font-size: 14px; }
   .z-day { display: flex; justify-content: space-between; margin: 18px 0 6px; font-size: 17px; font-weight: 700; }
   .z-day:first-child { margin-top: 8px; }
+  .z-actions { text-align: right; margin: -4px 0 6px; }
+  .z-actions .danger-text { margin-top: 0; }
   .z-table { display: flex; justify-content: space-between; padding: 8px 0 4px; font-weight: 600; border-top: 1px solid var(--sep); }
   .z-bon { display: flex; justify-content: space-between; padding: 3px 0 3px 16px; }
   .z-bon small { color: var(--muted); margin-left: 6px; }
@@ -367,6 +369,10 @@ document.addEventListener('click', e => {
     });
   }
   else if (b.id === 'zBtn') { renderZ(); $('#zDlg').showModal(); }
+  else if (d.zdel) {
+    const d0 = d.zdel, day = ms => new Date(ms).toLocaleDateString('ro-RO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    ask(`Ștergi toate bonurile din ziua ${d0}?`, 'Șterge ziua', () => { zlog = zlog.filter(z => day(z.at) !== d0); save(); renderZ(); });
+  }
   else if (b.id === 'histBtn') { renderHistory(); $('#histDlg').showModal(); }
   else if (d.histClear) {
     const t = +d.histClear;
@@ -421,7 +427,8 @@ function renderZ() {
   const days = Map.groupBy([...zlog].sort((a, b) => b.at - a.at), z => day(z.at)); // newest day first
   $('#zList').innerHTML = [...days].map(([d, bons]) => {
     const byTable = Map.groupBy(bons, z => z.t);
-    return `<div class="z-day"><span>Ziua ${d}</span><span>${lei(bons.reduce((s, z) => s + z.total, 0))}</span></div>` +
+    return `<div class="z-day"><span>Ziua ${d}</span><span>${lei(bons.reduce((s, z) => s + z.total, 0))}</span></div>
+      <div class="z-actions"><button data-zdel="${d}" class="danger-text">Șterge ziua</button></div>` +
       [...byTable].sort(([a], [b]) => a.localeCompare(b, 'ro', { numeric: true })).map(([t, list]) => {
         list = list.sort((a, b) => a.at - b.at);
         return `<div class="z-table"><span>${esc(t)}</span><span>${lei(list.reduce((s, z) => s + z.total, 0))} total</span></div>` +
