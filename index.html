@@ -37,7 +37,9 @@
   button.round svg { width: 20px; height: 20px; }
 
   main {
-    flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(5, 1fr);
+    flex: 1; min-height: 0; overflow-y: auto; display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    grid-auto-rows: minmax(280px, calc((100vh - 106px) / 2));
     gap: 14px; padding: 0 20px 20px;
   }
   .table {
@@ -48,7 +50,7 @@
     display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
     padding: 14px; border-bottom: 1px solid var(--sep);
   }
-  .table-head h2 { margin: 0; font-size: 20px; }
+  .table-head h2 { margin: 0; font-size: 20px; overflow-wrap: anywhere; }
   .table-head .add { justify-self: end; }
   .items { list-style: none; margin: 0; padding: 0 14px; overflow-y: auto; flex: 1; }
   .items li {
@@ -92,14 +94,23 @@
   .edit input { min-width: 0; }
   .edit button { padding: 0; color: var(--red); background: none; font-size: 18px; }
   header .row { display: flex; gap: 10px; }
-  #histBtn { background: var(--card); }
-  #histList .empty { padding: 4px 0 8px; text-align: left; }
+  #histBtn, #tblBtn { background: var(--card); }
+  #histList .empty { margin: 0; padding: 4px 0 8px; text-align: left; }
   .hist-head { display: flex; justify-content: space-between; align-items: center; }
   .hist-head .cat { margin-bottom: 4px; }
   button.danger-text { color: var(--red); padding: 4px 10px; margin-top: 10px; font-size: 13px; }
   .hist { padding: 10px 0; border-bottom: 1px solid var(--sep); }
   .hist-top { display: flex; justify-content: space-between; margin-bottom: 2px; }
   .hist-items { color: var(--muted); font-size: 14px; }
+  .tbl-edit { grid-template-columns: 1fr 28px; }
+  @media (max-width: 600px) {
+    header { flex-wrap: wrap; gap: 10px; padding: 12px 16px; }
+    main { padding: 0 16px 16px; grid-auto-rows: minmax(280px, auto); }
+    dialog:not(#confirmDlg) { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; border-radius: 0; }
+    dialog:not(#confirmDlg) .dlg { height: 100dvh; max-height: 100dvh; }
+    .hist-top { gap: 10px; }
+    button.danger-text { padding: 8px 12px; }
+  }
   .confirm { padding: 20px; text-align: center; }
   .confirm p { margin: 0 0 18px; }
   .confirm .row { display: flex; gap: 10px; justify-content: center; }
@@ -109,6 +120,7 @@
 <header>
   <h1>Comenzi mese</h1>
   <div class="row"><button id="histBtn">Istoric mese</button>
+  <button id="tblBtn">Mese</button>
   <button id="menuBtn" class="primary">+ Meniu</button></div>
 </header>
 <main id="tables"></main>
@@ -137,6 +149,13 @@
   </div>
 </dialog>
 
+<dialog id="tblDlg">
+  <div class="dlg">
+    <div class="dlg-head"><h3>Mese</h3><button data-close>Gata</button></div>
+    <div class="dlg-body" id="tblList"></div>
+  </div>
+</dialog>
+
 <dialog id="confirmDlg">
   <div class="confirm">
     <p id="confirmText"></p>
@@ -148,7 +167,6 @@
 </dialog>
 
 <script>
-const TABLES = 5;
 const TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>';
 
 // Default menu from Maylin Caffe "Meniu" PDF. cat | name | size | price (lei)
@@ -216,13 +234,16 @@ function load(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
 }
 function save() {
-  try { localStorage.setItem('menu_v2', JSON.stringify(menu)); localStorage.setItem('history', JSON.stringify(history)); localStorage.setItem('orders', JSON.stringify(orders)); } catch {}
+  try { localStorage.setItem('tables', JSON.stringify(tables)); localStorage.setItem('menu_v2', JSON.stringify(menu)); localStorage.setItem('history', JSON.stringify(history)); localStorage.setItem('orders', JSON.stringify(orders)); } catch {}
 }
 let menu = load('menu_v2', DEFAULT_MENU);
 // orders[t] = [{name, price, n}] — a snapshot, so editing the menu never changes open tables
-let orders = load('orders', Array.from({ length: TABLES }, () => []));
+// tables[t] = name; orders[t] and history[t] are kept parallel to it
+let tables = load('tables', ['Masa 1', 'Masa 2', 'Masa 3', 'Masa 4', 'Masa 5', 'Masa 6', 'Masa protocol']);
+let orders = load('orders', []);
 // history[t] = [{at, items, total}], newest first; filled when a table is cleared
-let history = load('history', Array.from({ length: TABLES }, () => []));
+let history = load('history', []);
+tables.forEach((_, t) => { orders[t] ??= []; history[t] ??= []; });
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -233,9 +254,9 @@ function renderTables() {
     const total = items.reduce((s, i) => s + i.price * i.n, 0);
     return `<section class="table">
       <div class="table-head">
-        <h2>Masa ${t + 1}</h2>
-        <button class="round trash" data-clear="${t}" title="Golește masa" aria-label="Golește masa ${t + 1}">${TRASH}</button>
-        <button class="round add" data-add="${t}" title="Adaugă produs" aria-label="Adaugă produs la masa ${t + 1}">+</button>
+        <h2>${esc(tables[t])}</h2>
+        <button class="round trash" data-clear="${t}" title="Golește masa" aria-label="Golește ${esc(tables[t])}">${TRASH}</button>
+        <button class="round add" data-add="${t}" title="Adaugă produs" aria-label="Adaugă produs la ${esc(tables[t])}">+</button>
       </div>
       <ul class="items">${items.length ? items.map((i, k) => `
         <li><span class="name">${esc(i.name)}</span>
@@ -296,7 +317,7 @@ document.addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   const d = b.dataset;
   if ('close' in d) b.closest('dialog').close();
-  else if (d.add) { pickTable = +d.add; $('#pickTitle').textContent = `Adaugă la Masa ${pickTable + 1}`; $('#pickSearch').value = ''; renderPick(); $('#pickDlg').showModal(); }
+  else if (d.add) { pickTable = +d.add; $('#pickTitle').textContent = `Adaugă la ${tables[pickTable]}`; $('#pickSearch').value = ''; renderPick(); $('#pickDlg').showModal(); }
   else if (d.pick) addItem(pickTable, menu[d.pick]);
   else if (d.inc || d.dec) {
     const [t, k] = (d.inc || d.dec).split(',').map(Number);
@@ -307,7 +328,7 @@ document.addEventListener('click', e => {
   else if (d.clear) {
     const t = +d.clear;
     if (!orders[t].length) return;
-    ask(`Sigur golești Masa ${t + 1}? Toate produsele vor fi șterse.`, 'Golește masa', () => {
+    ask(`Sigur golești ${tables[t]}? Toate produsele vor fi șterse.`, 'Golește masa', () => {
       history[t].unshift({ at: Date.now(), items: orders[t], total: orders[t].reduce((s, i) => s + i.price * i.n, 0) });
       orders[t] = []; save(); renderTables();
     });
@@ -315,7 +336,21 @@ document.addEventListener('click', e => {
   else if (b.id === 'histBtn') { renderHistory(); $('#histDlg').showModal(); }
   else if (d.histClear) {
     const t = +d.histClear;
-    ask(`Ștergi istoricul pentru Masa ${t + 1}?`, 'Șterge istoricul', () => { history[t] = []; save(); renderHistory(); });
+    ask(`Ștergi istoricul pentru ${tables[t]}?`, 'Șterge istoricul', () => { history[t] = []; save(); renderHistory(); });
+  }
+  else if (b.id === 'tblBtn') { renderTableEditor(); $('#tblDlg').showModal(); }
+  else if (d.tblDel) {
+    const t = +d.tblDel;
+    ask(`Ștergi ${tables[t]}? Comanda deschisă și istoricul ei se șterg și ele.`, 'Șterge masa', () => {
+      tables.splice(t, 1); orders.splice(t, 1); history.splice(t, 1);
+      save(); renderTables(); renderTableEditor();
+    });
+  }
+  else if (b.id === 'tblAdd') {
+    const name = $('#tblNew').value.trim();
+    if (!name) { $('#tblNew').focus(); return; }
+    tables.push(name); orders.push([]); history.push([]);
+    save(); renderTables(); renderTableEditor();
   }
   else if (b.id === 'menuBtn') { renderMenu(); $('#menuDlg').showModal(); }
   else if (d.del) {
@@ -332,10 +367,24 @@ document.addEventListener('click', e => {
     save(); renderMenu();
   }
 });
+function renderTableEditor() {
+  $('#tblList').innerHTML = tables.map((name, t) => `<div class="edit tbl-edit">
+      <input value="${esc(name)}" data-tbl="${t}" aria-label="Nume masă">
+      <button data-tbl-del="${t}" title="Șterge" aria-label="Șterge ${esc(name)}">✕</button>
+    </div>`).join('') + `<div class="cat">Masă nouă</div>
+    <div class="edit tbl-edit"><input id="tblNew" placeholder="ex. Terasă 1"></div>
+    <button id="tblAdd" class="primary" style="margin-top:6px">Adaugă masă</button>`;
+}
+$('#tblList').addEventListener('change', e => {
+  const t = e.target.dataset.tbl; if (t == null) return;
+  const v = e.target.value.trim();
+  if (!v) { e.target.value = tables[t]; return; }
+  tables[t] = v; save(); renderTables();
+});
 function renderHistory() {
   const when = ms => new Date(ms).toLocaleString('ro-RO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   $('#histList').innerHTML = history.map((list, t) => `
-    <div class="hist-head"><div class="cat">Masa ${t + 1}</div>
+    <div class="hist-head"><div class="cat">${esc(tables[t])}</div>
       ${list.length ? `<button data-hist-clear="${t}" class="danger-text">Șterge istoricul</button>` : ''}</div>
     ${list.length ? list.map(h => `<div class="hist">
       <div class="hist-top"><span>${when(h.at)}</span><b>${lei(h.total)}</b></div>
