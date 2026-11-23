@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comenzi Mese</title>
+<style>
+  :root {
+    --bg: #f2f2f7; --card: #fff; --text: #1c1c1e; --muted: #8e8e93;
+    --sep: #e5e5ea; --blue: #007aff; --red: #ff3b30; --fill: #f2f2f7;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 15px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px;
+  }
+  h1 { margin: 0; font-size: 26px; font-weight: 700; }
+  button {
+    font: inherit; border: 0; cursor: pointer; border-radius: 10px;
+    padding: 8px 14px; background: var(--fill); color: var(--blue); font-weight: 600;
+  }
+  button:hover { filter: brightness(.96); }
+  button.primary { background: var(--blue); color: #fff; }
+  button.danger { background: var(--red); color: #fff; }
+  button.round {
+    width: 38px; height: 38px; padding: 0; border-radius: 50%;
+    font-size: 22px; line-height: 38px; display: grid; place-items: center;
+  }
+  button.round.add { background: var(--blue); color: #fff; }
+  button.round.trash { color: var(--red); }
+  button.round svg { width: 20px; height: 20px; }
+
+  main {
+    flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(5, 1fr);
+    gap: 14px; padding: 0 20px 20px;
+  }
+  .table {
+    background: var(--card); border-radius: 16px; display: flex; flex-direction: column;
+    min-height: 0; box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  }
+  .table-head {
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+    padding: 14px; border-bottom: 1px solid var(--sep);
+  }
+  .table-head h2 { margin: 0; font-size: 20px; }
+  .table-head .add { justify-self: end; }
+  .items { list-style: none; margin: 0; padding: 0 14px; overflow-y: auto; flex: 1; }
+  .items li {
+    display: flex; align-items: center; gap: 8px; padding: 10px 0;
+    border-bottom: 1px solid var(--sep);
+  }
+  .items li .name { flex: 1; }
+  .items li .qty { min-width: 22px; text-align: center; font-weight: 600; }
+  .items li button { width: 28px; height: 28px; padding: 0; border-radius: 50%; }
+  .empty { color: var(--muted); text-align: center; padding: 24px 0; }
+  .total {
+    padding: 12px 14px; border-top: 1px solid var(--sep);
+    display: flex; justify-content: space-between; font-weight: 600;
+  }
+
+  dialog {
+    border: 0; border-radius: 14px; padding: 0; width: 560px; max-width: 90vw;
+    max-height: 85vh; box-shadow: 0 10px 40px rgba(0,0,0,.2);
+  }
+  dialog::backdrop { background: rgba(0,0,0,.3); }
+  .dlg { display: flex; flex-direction: column; max-height: 85vh; }
+  .dlg-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 16px; border-bottom: 1px solid var(--sep);
+  }
+  .dlg-head h3 { margin: 0; font-size: 17px; }
+  .dlg-body { overflow-y: auto; padding: 8px 16px 16px; }
+  .cat { margin: 14px 0 4px; font-size: 13px; color: var(--muted); text-transform: uppercase; }
+  .pick {
+    display: flex; width: 100%; justify-content: space-between; text-align: left;
+    background: none; color: var(--text); font-weight: 400; border-radius: 0;
+    border-bottom: 1px solid var(--sep); padding: 10px 2px;
+  }
+  .pick:hover { background: var(--fill); }
+  .pick small { color: var(--muted); }
+  input[type=search], .edit input {
+    font: inherit; border: 0; background: var(--fill); border-radius: 10px; padding: 8px 10px;
+  }
+  input[type=search] { width: 100%; margin-top: 10px; }
+  .edit { display: grid; grid-template-columns: 1fr 70px 70px 28px; gap: 6px; margin-bottom: 6px; }
+  .edit input { min-width: 0; }
+  .edit button { padding: 0; color: var(--red); background: none; font-size: 18px; }
+  .confirm { padding: 20px; text-align: center; }
+  .confirm p { margin: 0 0 18px; }
+  .confirm .row { display: flex; gap: 10px; justify-content: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Comenzi mese</h1>
+  <button id="menuBtn" class="primary">+ Meniu</button>
+</header>
+<main id="tables"></main>
+
+<dialog id="pickDlg">
+  <div class="dlg">
+    <div class="dlg-head"><h3 id="pickTitle"></h3><button data-close>Gata</button></div>
+    <div class="dlg-body">
+      <input type="search" id="pickSearch" placeholder="Caută produs…">
+      <div id="pickList"></div>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="menuDlg">
+  <div class="dlg">
+    <div class="dlg-head"><h3>Produse din meniu</h3><button data-close>Gata</button></div>
+    <div class="dlg-body" id="menuList"></div>
+  </div>
+</dialog>
+
+<dialog id="confirmDlg">
+  <div class="confirm">
+    <p id="confirmText"></p>
+    <div class="row">
+      <button data-close>Anulează</button>
+      <button id="confirmOk" class="danger">Golește masa</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+const TABLES = 5;
+const TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>';
+
+// Default menu from Maylin Caffe "Meniu" PDF. cat | name | size | price (lei)
+const DEFAULT_MENU = `
+Hot Drinks|Espresso|30ml|8
+Hot Drinks|Espresso dublu|60ml|10
+Hot Drinks|Espresso macchiato|60ml|9
+Hot Drinks|Cafea lungă|120ml|9
+Hot Drinks|Americano|120ml|9
+Hot Drinks|Cafea cu lapte|200ml|10
+Hot Drinks|Cappuccino|200ml|10
+Hot Drinks|Caffe Latte|320ml|15
+Hot Drinks|Flat White|200ml|12
+Hot Drinks|Irish Coffee|200ml|12
+Hot Drinks|Frappe|350ml|15
+Hot Drinks|Ice Latte|350ml|15
+Hot Drinks|Espresso Tonic|350ml|15
+Hot Drinks|Ciocolată caldă (neagră/albă)|260ml|12
+Hot Drinks|Ceai (diferite arome)|400ml|12
+Extra|Deco Coffee||3
+Extra|Lapte vegetal||3
+Extra|Sirop||3
+Limonadă|Limonadă clasică / Grapefruit|350ml|14
+Croissants & Cookies|Croissant|70g|8
+Croissants & Cookies|Croissant cu ciocolată|95g|9
+Croissants & Cookies|Cookies|76g|10
+Răcoritoare|Pepsi / Twist / Zero|500ml|10
+Răcoritoare|Mountain Dew|500ml|10
+Răcoritoare|7 Up|500ml|10
+Răcoritoare|Mirinda Orange|500ml|10
+Răcoritoare|Prigat Portocale / Piersici / Căpșuni + Banane|500ml|10
+Răcoritoare|Lipton Lămâie / Piersici|500ml|10
+Răcoritoare|Aqua Carpatica Plată / Carbo / Carbo Forte|500ml|8
+Bere|Bere Draft|400ml|12
+Bere|Ursus Premium|500ml|10
+Bere|Ursus Black|500ml|10
+Bere|Ursus Remix|330ml|8
+Bere|Ciucaș Gold|500ml|8
+Bere|Peroni|500ml|12
+Bere fără alcool|Ursus fără alcool|500ml|12
+Bere fără alcool|Ursus Cooler|300ml|8
+Vin|Strunga Velier Sauv. Blanc Sec|0.75l|90
+Vin|Strunga Velier Cabernet Sauv. Rosé|0.75l|90
+Vin|Strunga Muscat Ottonel Carafă|1l|35
+Vin|Cotnari Concept Frâncușă alb sec|0.75l|70
+Vin|Cotnari Concept Rosé|0.75l|70
+Vin|Cotnari Concept Roșu|0.75l|70
+Vin|Spumant ZAZ alb brut|0.75l|60
+Vin|Spumant ZAZ rosé demisec|0.75l|60
+`.trim().split('\n').map(l => { const [cat, name, size, price] = l.split('|'); return { cat, name, size, price: +price }; });
+
+// Storage: this browser only. try/catch so a blocked storage never breaks the page.
+function load(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
+}
+function save() {
+  try { localStorage.setItem('menu', JSON.stringify(menu)); localStorage.setItem('orders', JSON.stringify(orders)); } catch {}
+}
+let menu = load('menu', DEFAULT_MENU);
+// orders[t] = [{name, price, n}] — a snapshot, so editing the menu never changes open tables
+let orders = load('orders', Array.from({ length: TABLES }, () => []));
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const lei = n => `${n} lei`;
+
+function renderTables() {
+  $('#tables').innerHTML = orders.map((items, t) => {
+    const total = items.reduce((s, i) => s + i.price * i.n, 0);
+    return `<section class="table">
+      <div class="table-head">
+        <h2>Masa ${t + 1}</h2>
+        <button class="round trash" data-clear="${t}" title="Golește masa" aria-label="Golește masa ${t + 1}">${TRASH}</button>
+        <button class="round add" data-add="${t}" title="Adaugă produs" aria-label="Adaugă produs la masa ${t + 1}">+</button>
+      </div>
+      <ul class="items">${items.length ? items.map((i, k) => `
+        <li><span class="name">${esc(i.name)}</span>
+          <button data-dec="${t},${k}" aria-label="Scade">−</button>
+          <span class="qty">${i.n}</span>
+          <button data-inc="${t},${k}" aria-label="Adaugă">+</button></li>`).join('')
+        : '<li class="empty">Nicio comandă</li>'}</ul>
+      <div class="total"><span>Total</span><span>${lei(total)}</span></div>
+    </section>`;
+  }).join('');
+}
+
+function addItem(t, item) {
+  const row = orders[t].find(i => i.name === item.name && i.price === item.price);
+  row ? row.n++ : orders[t].push({ name: item.name, price: item.price, n: 1 });
+  save(); renderTables();
+}
+
+// ---- product picker for one table
+let pickTable = 0;
+function renderPick() {
+  const q = $('#pickSearch').value.trim().toLowerCase();
+  let html = '', cat = '';
+  menu.forEach((m, idx) => {
+    if (q && !m.name.toLowerCase().includes(q)) return;
+    if (m.cat !== cat) { cat = m.cat; html += `<div class="cat">${esc(cat)}</div>`; }
+    html += `<button class="pick" data-pick="${idx}"><span>${esc(m.name)} <small>${esc(m.size || '')}</small></span><span>${lei(m.price)}</span></button>`;
+  });
+  $('#pickList').innerHTML = html || '<p class="empty">Niciun produs găsit</p>';
+}
+
+// ---- menu editor
+function renderMenu() {
+  let html = '', cat = null;
+  menu.forEach((m, idx) => {
+    if (m.cat !== cat) { cat = m.cat; html += `<div class="cat">${esc(cat)}</div>`; }
+    html += `<div class="edit">
+      <input value="${esc(m.name)}" data-f="name" data-i="${idx}" aria-label="Nume">
+      <input value="${esc(m.size || '')}" data-f="size" data-i="${idx}" placeholder="ml/g" aria-label="Cantitate">
+      <input type="number" min="0" step="0.5" value="${m.price}" data-f="price" data-i="${idx}" aria-label="Preț">
+      <button data-del="${idx}" title="Șterge" aria-label="Șterge ${esc(m.name)}">✕</button>
+    </div>`;
+  });
+  const cats = [...new Set(menu.map(m => m.cat))];
+  html += `<div class="cat">Produs nou</div>
+    <div class="edit" style="grid-template-columns:1fr 1fr 70px 70px">
+      <input id="newName" placeholder="Nume">
+      <input id="newCat" list="cats" placeholder="Categorie">
+      <input id="newSize" placeholder="ml/g">
+      <input id="newPrice" type="number" min="0" step="0.5" placeholder="lei">
+    </div>
+    <datalist id="cats">${cats.map(c => `<option value="${esc(c)}">`).join('')}</datalist>
+    <button id="newAdd" class="primary" style="margin-top:6px">Adaugă în meniu</button>`;
+  $('#menuList').innerHTML = html;
+}
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const d = b.dataset;
+  if ('close' in d) b.closest('dialog').close();
+  else if (d.add) { pickTable = +d.add; $('#pickTitle').textContent = `Adaugă la Masa ${pickTable + 1}`; $('#pickSearch').value = ''; renderPick(); $('#pickDlg').showModal(); }
+  else if (d.pick) addItem(pickTable, menu[d.pick]);
+  else if (d.inc || d.dec) {
+    const [t, k] = (d.inc || d.dec).split(',').map(Number);
+    orders[t][k].n += d.inc ? 1 : -1;
+    if (orders[t][k].n < 1) orders[t].splice(k, 1);
+    save(); renderTables();
+  }
+  else if (d.clear) {
+    const t = +d.clear;
+    if (!orders[t].length) return;
+    ask(`Sigur golești Masa ${t + 1}? Toate produsele vor fi șterse.`, 'Golește masa', () => { orders[t] = []; save(); renderTables(); });
+  }
+  else if (b.id === 'menuBtn') { renderMenu(); $('#menuDlg').showModal(); }
+  else if (d.del) {
+    const idx = +d.del;
+    ask(`Ștergi „${menu[idx].name}” din meniu?`, 'Șterge', () => { menu.splice(idx, 1); save(); renderMenu(); });
+  }
+  else if (b.id === 'newAdd') {
+    const name = $('#newName').value.trim(), cat = $('#newCat').value.trim() || 'Altele';
+    const price = parseFloat($('#newPrice').value);
+    if (!name || !(price >= 0)) { $('#newName').focus(); return; }
+    // insert after the last item of the same category so groups stay together
+    let at = menu.map(m => m.cat).lastIndexOf(cat);
+    menu.splice(at < 0 ? menu.length : at + 1, 0, { cat, name, size: $('#newSize').value.trim(), price });
+    save(); renderMenu();
+  }
+});
+function ask(text, okLabel, onOk) {
+  $('#confirmText').textContent = text;
+  $('#confirmOk').textContent = okLabel;
+  $('#confirmOk').onclick = () => { $('#confirmDlg').close(); onOk(); };
+  $('#confirmDlg').showModal();
+}
+
+$('#menuList').addEventListener('change', e => {
+  const { f, i } = e.target.dataset; if (!f) return;
+  const v = e.target.value.trim();
+  if (f === 'price') { const p = parseFloat(v); if (!(p >= 0)) { e.target.value = menu[i].price; return; } menu[i].price = p; }
+  else if (f === 'name' && !v) { e.target.value = menu[i].name; return; }
+  else menu[i][f] = v;
+  save();
+});
+$('#pickSearch').addEventListener('input', renderPick);
+
+renderTables();
+</script>
+</body>
+</html>
